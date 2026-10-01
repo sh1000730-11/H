@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>番茄腦袋 - Tomato Brain</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        .tomato-btn {
+            transition: transform 0.05s ease-in-out;
+        }
+        .tomato-btn:active {
+            transform: scale(0.92);
+        }
+    </style>
+</head>
+<body class="bg-red-50 min-h-screen flex flex-col items-center justify-between p-4 font-sans select-none">
+
+    <!-- 上方控制列 / 音樂與管理員 -->
+    <div class="w-full max-w-md flex justify-between items-center py-2 px-4 bg-white rounded-2xl shadow-sm border border-red-100">
+        <button id="musicToggle" class="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-600 rounded-full font-bold text-sm hover:bg-red-200 transition">
+            <span id="musicIcon">🎵</span>
+            <span id="musicText">背景音樂：關閉</span>
+        </button>
+        <button id="adminBtn" class="text-xs text-gray-400 underline hover:text-gray-600">管理員設定</button>
+    </div>
+
+    <!-- 主遊戲區塊 -->
+    <div class="flex flex-col items-center justify-center my-auto text-center">
+        <!-- 分數顯示 -->
+        <h1 id="scoreDisplay" class="text-6xl font-black text-red-600 mb-2 tracking-tight">0</h1>
+        <p class="text-xs font-semibold text-red-400 mb-8 uppercase tracking-widest">Tomato Brain Clicks</p>
+
+        <!-- 番茄核心點擊按鈕 -->
+        <button id="tomatoBtn" class="tomato-btn relative focus:outline-none rounded-full p-4 active:outline-none">
+            <div class="w-56 h-56 md:w-64 md:h-64 bg-red-500 rounded-full flex items-center justify-center shadow-2xl shadow-red-300 border-8 border-red-400 hover:bg-red-600">
+                <span class="text-8xl md:text-9xl filter drop-shadow-md">🍅</span>
+            </div>
+        </button>
+    </div>
+
+    <!-- 頁尾聲明 -->
+    <div class="text-center text-xs text-red-300 pb-4">
+        點擊番茄征服宇宙 🍅✨
+    </div>
+
+    <!-- 背景音樂音訊標籤 -->
+    <audio id="bgm" loop preload="auto">
+        <source src="https://actions.google.com/sounds/v1/ambiences/coffee_shop.ogg" type="audio/ogg">
+    </audio>
+
+    <script>
+        // --- Firebase 設定 (請使用原有的 Realtime Database 設定) ---
+        const firebaseConfig = {
+            databaseURL: "https://tt-game-default-rtdb.firebaseio.com" // 替換為你的 Firebase URL
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        const scoreRef = db.ref('game/score');
+
+        // --- 元素抓取 ---
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const tomatoBtn = document.getElementById('tomatoBtn');
+        const musicToggle = document.getElementById('musicToggle');
+        const musicText = document.getElementById('musicText');
+        const musicIcon = document.getElementById('musicIcon');
+        const adminBtn = document.getElementById('adminBtn');
+        const bgm = document.getElementById('bgm');
+
+        let currentScore = 0;
+        let isMusicPlaying = false;
+
+        // --- Web Audio API (點擊音效) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function playClickSound() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+            } catch (e) {
+                console.log(e);
+            }
+        }
+
+        // --- iOS 關鍵：全螢幕觸控無感解鎖音效 ---
+        function unlockAudio() {
+            // 初始化或恢復 AudioContext
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            // 預載 BGM
+            if (bgm) {
+                bgm.load();
+            }
+
+            // 觸發後立刻移除監聽，避免重複執行
+            document.removeEventListener('touchstart', unlockAudio);
+            document.removeEventListener('click', unlockAudio);
+        }
+
+        // 註冊 iOS 觸控與點擊解鎖事件
+        document.addEventListener('touchstart', unlockAudio, { passive: true });
+        document.addEventListener('click', unlockAudio, { passive: true });
+
+        // --- 音樂開關切換 ---
+        musicToggle.addEventListener('click', () => {
+            if (!audioCtx) unlockAudio();
+
+            if (isMusicPlaying) {
+                bgm.pause();
+                musicText.innerText = '背景音樂：關閉';
+                musicIcon.innerText = '🎵';
+                isMusicPlaying = false;
+            } else {
+                bgm.play().then(() => {
+                    musicText.innerText = '背景音樂：播放中';
+                    musicIcon.innerText = '🎶';
+                    isMusicPlaying = true;
+                }).catch(err => {
+                    console.log("播放失敗: ", err);
+                });
+            }
+        });
+
+        // --- 即時同步分數 ---
+        scoreRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            currentScore = data || 0;
+            scoreDisplay.innerText = currentScore.toLocaleString();
+        });
+
+        // --- 點擊番茄事件 ---
+        tomatoBtn.addEventListener('click', () => {
+            // 觸覺回饋 (手機震動)
+            if (navigator.vibrate) {
+                navigator.vibrate(15);
+            }
+
+            // 播放短點擊音效
+            playClickSound();
+
+            // 增加分數並上傳 Firebase
+            currentScore++;
+            scoreRef.set(currentScore);
+        });
+
+        // --- 管理員密碼重設 ---
+        adminBtn.addEventListener('click', () => {
+            const password = prompt('請輸入管理員密碼：');
+            if (password === '520') {
+                const newScore = prompt('密碼正確！請輸入要修改的總分數：', currentScore);
+                if (newScore !== null && !isNaN(newScore)) {
+                    scoreRef.set(parseInt(newScore, 10));
+                    alert('分數更新成功！');
+                }
+            } else if (password !== null) {
+                alert('密碼錯誤！');
+            }
+        });
+    </script>
+</body>
+</html>
